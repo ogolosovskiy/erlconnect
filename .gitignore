@@ -27,3 +27,9 @@
 *.exe
 *.out
 *.app
+
+# idea
+.idea/workspace.xml
+build
+.idea/markdown-navigator.xml
+.idea/markdown-navigator/
