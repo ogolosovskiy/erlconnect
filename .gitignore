@@ -33,3 +33,4 @@
 build
 .idea/markdown-navigator.xml
 .idea/markdown-navigator/
+cmake-build-debug/
