@@ -8,10 +8,9 @@
 #include <erl_interface.h>
 #include <ei.h>
 
-int main() {
+#include "erlconnect.h"
 
+void test() {
     erl_init(NULL, 0);
-
     std::cout << "Hello, World!" << std::endl;
-    return 0;
 }
