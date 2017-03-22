@@ -1,5 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
+set(CMAKE_CXX_STANDARD 11)
+
 SET(MODS ${CMAKE_SOURCE_DIR}/cmake/)
 SET(CMAKE_MODULE_PATH ${MODS} ${CMAKE_MODULE_PATH})
 
@@ -22,5 +24,9 @@ LINK_DIRECTORIES(
 
 ADD_LIBRARY(erlconnect SHARED ${so_sources})
 ADD_EXECUTABLE(cnodetest ${test_sources})
+
+target_compile_options(cnodetest PUBLIC -std=c++11 -Wall)
+target_compile_options(erlconnect PUBLIC -std=c++11 -Wall)
+
 TARGET_LINK_LIBRARIES(erlconnect erl_interface ei pthread)
 TARGET_LINK_LIBRARIES(cnodetest erlconnect)
