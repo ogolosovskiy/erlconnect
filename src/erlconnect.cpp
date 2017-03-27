@@ -190,12 +190,13 @@ void client::to_prepare_call(std::string const& to, std::string const& from)
     etrem_ptr fromSEQ_bs_term = make_eterm(erl_mk_binary(from.c_str(), from.size()-1));
 
     std::future<int> ready = _prepare_call_result.get_future();
+    int t = 0;
 
     etrem_ptr arg = make_eterm(erl_format((char*)"[[{~w, ~w},{~w, ~w}]]", to_bs_term.get(), toSEQ_bs_term.get(), from_bs_term.get(), fromSEQ_bs_term.get()));
     if(0==erl_rpc_to(_sock_tcp, (char*)"bws_call_logic_test", (char*)"to_prepare_call", arg.get())) {
         std::cout << "to_prepare_call success" << std::endl;
           ready.wait();
-          int t = ready.get();
+          t = ready.get();
     }
     else
         std::cout << "to_prepare_call failed" << std::endl;
