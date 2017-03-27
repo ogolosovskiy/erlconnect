@@ -4,6 +4,9 @@
 #include <iostream>
 #include <thread>
 #include <memory>
+#include <future>
+#include <map>
+#include <functional>
 
 //stdlib
 #include <stdio.h>
@@ -28,12 +31,20 @@ etrem_ptr make_eterm(ETERM* new_one)
     return std::unique_ptr<ETERM, eterm_deleter>(new_one, deleter);
 }
 
+typedef std::map<std::string, std::string> res_map;
+
 class client
 {
 public:
     client(std::string const& erlang_node_long, std::string const& cookie);
+    client(const client&);
     void loop();
-    void to_prepare_call();
+    void to_prepare_call(std::string const& to, std::string const& from);
+    void ls();
+
+protected:
+    std::promise<int> _prepare_call_result;
 protected:
     int _sock_tcp;
 };
+

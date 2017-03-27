@@ -1,9 +1,19 @@
 
 #include "erlconnect.h"
 
+res_map term_to_map(ETERM* term)
+{
+    return std::map<std::string, std::string>();
+};
+
+client::client(const client& copy)
+: _sock_tcp(copy._sock_tcp)
+{
+
+}
 
 client::client(std::string const& erlang_node_long, std::string const& cookie)
-: _sock_tcp(0)
+    : _sock_tcp(0)
 {
     erl_init(NULL, 0);
 
@@ -44,31 +54,6 @@ client::client(std::string const& erlang_node_long, std::string const& cookie)
         throw std::runtime_error("erl_connect");
     }
     std::cout << "Success connected" << std::endl;
-}
-
-ETERM *foo();
-ETERM *bar();
-ETERM *baz();
-ETERM *quax();
-
-const static struct _fnames {
-    const char *name;
-    ETERM *(*func)(void);
-} fns[] = {
-        { "foo", foo },
-        { "bar", bar },
-        { "baz", baz },
-        { "quax", quax }
-};
-
-short int get_fn_idx(char *pattern) {
-    size_t i = 0;
-    while(i < (sizeof(fns) / sizeof(fns[0]))) {
-        if (strcmp(fns[i].name, pattern) == 0)
-            return i;
-        i++;
-    }
-    return -1;
 }
 
 size_t const BUFSIZE = 1000;
@@ -135,14 +120,58 @@ void client::loop()
                     } else {
                         etrem_ptr arg1_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
                         etrem_ptr arg2_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
-
                         std::cout << "incoming message:";
                         if(arg1_term)
                             erl_print_term(stdout, arg1_term.get());
-                        std::cout << " ";
-                        if(arg2_term)
-                            erl_print_term(stdout, arg2_term.get());
                         std::cout << std::endl;
+                        if(arg2_term) {
+                            erl_print_term(stdout, arg2_term.get());
+                            ETERM* epl = arg2_term.get();
+                            if(ERL_IS_LIST(epl))
+                            {
+                                std::cout << std::endl;
+                                putc('[', stdout);
+                                while (ERL_IS_CONS(epl)) {
+                                    ETERM* ept = epl->uval.lval.head;
+                                    if(ERL_IS_TUPLE(ept)) {
+                                        putc('{', stdout);
+                                        for (int i = 0; i < ERL_TUPLE_SIZE(ept); i++) {
+                                            ETERM* epb1 = ERL_TUPLE_ELEMENT(ept, 0);
+                                            if( ERL_IS_BINARY(epb1)) {
+                                                int sz = (ERL_BIN_SIZE(epb1) > 20) ? 20 : ERL_BIN_SIZE(epb1);
+                                                unsigned char *ptr = ERL_BIN_PTR(epb1);
+                                                for (i = 0; i < sz; i++) {
+                                                    putc(ptr[i], stdout);
+                                                }
+                                            }
+                                            if (i != ERL_TUPLE_SIZE(ept) - 1) {
+                                                putc(',', stdout);
+                                            }
+                                            ETERM* epb2 = ERL_TUPLE_ELEMENT(ept, 1);
+                                            if( ERL_IS_BINARY(epb2)) {
+                                                int sz = (ERL_BIN_SIZE(epb2) > 20) ? 20 : ERL_BIN_SIZE(epb2);
+                                                unsigned char *ptr = ERL_BIN_PTR(epb2);
+                                                for (i = 0; i < sz; i++) {
+                                                    putc(ptr[i], stdout);
+                                                }
+                                            }
+                                        }
+                                        putc('}', stdout);
+                                    }
+                                    epl = epl->uval.lval.tail;
+                                    if (ERL_IS_CONS(epl)) {
+                                        putc(',', stdout);
+                                    }
+                                }
+                                if (!ERL_IS_EMPTY_LIST(epl)) {
+                                    putc('|', stdout);
+                                    // ch_written += erl_print_term(fp, ep);
+                                }
+                                putc(']', stdout);
+                            }
+                        }
+                        std::cout << std::endl;
+                        _prepare_call_result.set_value(5);
                     }
                 }
                 break;
@@ -153,31 +182,30 @@ void client::loop()
     }
 }
 
-
-void client::to_prepare_call()
+void client::to_prepare_call(std::string const& to, std::string const& from)
 {
-    // erl_rpc_to() returns 0 on success, otherwise a negative number.
-    etrem_ptr args = make_eterm(erl_format((char*)"[~a,~a]", "Arg1", "Arg2"));
-    if(0==erl_rpc_to(_sock_tcp, (char*)"bws_call_logic", (char*)"to_prepare_call", args.get()))
+    etrem_ptr to_bs_term = make_eterm(erl_mk_binary("to", sizeof("to")-1));
+    etrem_ptr from_bs_term = make_eterm(erl_mk_binary("from", sizeof("from")-1));
+    etrem_ptr toSEQ_bs_term = make_eterm(erl_mk_binary(to.c_str(), to.size()-1));
+    etrem_ptr fromSEQ_bs_term = make_eterm(erl_mk_binary(from.c_str(), from.size()-1));
+
+    std::future<int> ready = _prepare_call_result.get_future();
+
+    etrem_ptr arg = make_eterm(erl_format((char*)"[[{~w, ~w},{~w, ~w}]]", to_bs_term.get(), toSEQ_bs_term.get(), from_bs_term.get(), fromSEQ_bs_term.get()));
+    if(0==erl_rpc_to(_sock_tcp, (char*)"bws_call_logic_test", (char*)"to_prepare_call", arg.get())) {
         std::cout << "to_prepare_call success" << std::endl;
+          ready.wait();
+          int t = ready.get();
+    }
     else
         std::cout << "to_prepare_call failed" << std::endl;
 }
 
-/* Callbacks */
-
-ETERM *foo() {
-    return erl_mk_int(100);
-}
-
-ETERM *bar() {
-    return erl_mk_atom("bar_function_returned_atom");
-}
-
-ETERM *baz() {
-    return erl_mk_float(3.141592);
-}
-
-ETERM *quax() {
-    return erl_mk_estring("test string", strlen("test string"));
+void client::ls()
+{
+    etrem_ptr arg = make_eterm(erl_format((char*)"[~a]", "."));
+    if(0==erl_rpc_to(_sock_tcp, (char*)"c", (char*)"ls", arg.get()))
+        std::cout << "ls success" << std::endl;
+    else
+        std::cout << "ls failed" << std::endl;
 }
