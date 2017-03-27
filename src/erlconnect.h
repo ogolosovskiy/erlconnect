@@ -43,7 +43,7 @@ public:
     void ls();
 
 protected:
-    std::promise<int> _prepare_call_result;
+    std::promise<res_map> _prepare_call_result;
 protected:
     int _sock_tcp;
 };
