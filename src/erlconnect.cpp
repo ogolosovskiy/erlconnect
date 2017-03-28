@@ -22,9 +22,6 @@ res_map map_from_elist(ETERM* etrem)
                         unsigned char *ptr = ERL_BIN_PTR(epb1);
                         key = ptr;
                     }
-                    /* if (i != ERL_TUPLE_SIZE(ept) - 1) {
-                        putc(',', stdout);
-                    }*/
                     ETERM* epb2 = ERL_TUPLE_ELEMENT(ept, 1);
                     if( ERL_IS_BINARY(epb2)) {
                         unsigned char *ptr = ERL_BIN_PTR(epb2);
@@ -35,13 +32,7 @@ res_map map_from_elist(ETERM* etrem)
                 }
             }
             epl = epl->uval.lval.tail;
-            /* if (ERL_IS_CONS(epl)) {
-                putc(',', stdout);
-            }*/
         }
-        /* if (!ERL_IS_EMPTY_LIST(epl)) {
-            putc('|', stdout);
-        }*/
     }
 
     return result;
@@ -50,23 +41,24 @@ res_map map_from_elist(ETERM* etrem)
 client::client(const client& copy)
 : _sock_tcp(copy._sock_tcp)
 {
-
+    std::cout << "copy !!!!" << std::endl;
 }
 
 client::client(std::string const& erlang_node_long, std::string const& cookie)
     : _sock_tcp(0)
+    , test(0)
 {
     erl_init(NULL, 0);
 
     in_addr addr;
-    addr.s_addr = inet_addr("192.168.1.80");
+    addr.s_addr = inet_addr("192.168.88.103");
 
-    if (!erl_connect_xinit((char*)"ubuntu64",
+    if (!erl_connect_xinit((char*)"MacBook-Pro-Oleg.local",
                            (char*)"node777",
-                           (char*)"node777@192.168.1.80",
+                           (char*)"node777@192.168.88.103",
                            &addr,
                            (char*)(cookie.c_str()),
-                           10))
+                           17))
         throw std::runtime_error("erl_connect_init failed" );
 
     const char* this_node_name = erl_thisnodename();
@@ -111,6 +103,9 @@ void client::loop()
 
         got = erl_receive_msg(_sock_tcp, buf, BUFSIZE, &emsg);
 
+        std::cout << "got packet" << std::endl;
+
+
         switch (got) {
             case ERL_TICK:
                 std::cout << "keep alive packet received" << std::endl;
@@ -125,6 +120,7 @@ void client::loop()
                   Incoming request term: {call, from_pid(), {fun_name_atom, arguments_list}}}
                   Reply term: {from_pid(), any}
                 */
+                std::cout << "ERL_MSG" << std::endl;
                 if (emsg.type == ERL_REG_SEND || emsg.type ==  ERL_SEND) {
 
                     etrem_ptr header_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
@@ -138,6 +134,8 @@ void client::loop()
 
                     if(request)
                     {
+
+                        std::cout << "REQV" << std::endl;
 
                         etrem_ptr from_pid_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
                         etrem_ptr function_tuple_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 2));
@@ -159,10 +157,15 @@ void client::loop()
                         }
 
                     } else {
+                        std::cout << "RESP" << std::endl;
+
 //                        etrem_ptr arg1_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
                         etrem_ptr arg2_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
-                        std::cout << "incoming message:";
-                        _prepare_call_result.set_value(map_from_elist(arg2_term.get()));
+                        std::cout << "incoming message:" << test << std::endl;
+                        res_map mp = map_from_elist(arg2_term.get());
+                        std::cout << "result:" << mp.size() << std::endl;
+                        _prepare_call_result.set_value(mp);
+                        std::cout << "done" << std::endl;
                     }
                 }
                 break;
@@ -185,8 +188,9 @@ res_map client::to_prepare_call(std::string const& to, std::string const& from)
 
     etrem_ptr arg = make_eterm(erl_format((char*)"[[{~w, ~w},{~w, ~w}]]", to_bs_term.get(), toSEQ_bs_term.get(), from_bs_term.get(), fromSEQ_bs_term.get()));
     if(0==erl_rpc_to(_sock_tcp, (char*)"bws_call_logic_test", (char*)"to_prepare_call", arg.get())) {
-        std::cout << "to_prepare_call success" << std::endl;
+        std::cout << "to_prepare_call success, wait" << std::endl;
         ready.wait();
+        std::cout << "wait done" << std::endl;
         ff = ready.get();
     }
     else
