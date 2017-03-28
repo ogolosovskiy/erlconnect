@@ -39,7 +39,7 @@ public:
     client(std::string const& erlang_node_long, std::string const& cookie);
     client(const client&);
     void loop();
-    void to_prepare_call(std::string const& to, std::string const& from);
+    res_map to_prepare_call(std::string const& to, std::string const& from);
     void ls();
 
 protected:

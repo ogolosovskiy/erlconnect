@@ -9,7 +9,11 @@ int main() {
     client cli("bws@192.168.1.80", "button-ws");
     std::thread t1(&client::loop, std::ref(cli));
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    cli.to_prepare_call("BEE_RU_to", "BEE_RU_from");
+    res_map res = cli.to_prepare_call("BEE_RU_to", "BEE_RU_from");
+
+    for(auto elem : res)
+        std::cout << elem.first << " " << elem.second << std::endl;
+
     t1.join();
 
     return 0;

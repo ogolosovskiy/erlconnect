@@ -10,52 +10,38 @@ res_map map_from_elist(ETERM* etrem)
     ETERM* epl = etrem;
     if(ERL_IS_LIST(epl))
     {
-//        std::cout << std::endl;
-        //      putc('[', stdout);
         while (ERL_IS_CONS(epl)) {
             ETERM* ept = epl->uval.lval.head;
             if(ERL_IS_TUPLE(ept)) {
-                //            putc('{', stdout);
                 unsigned char *key = 0;
                 unsigned char *val = 0;
 
                 for (int i = 0; i < ERL_TUPLE_SIZE(ept); i++) {
                     ETERM* epb1 = ERL_TUPLE_ELEMENT(ept, 0);
                     if( ERL_IS_BINARY(epb1)) {
-//                        int sz = (ERL_BIN_SIZE(epb1) > 20) ? 20 : ERL_BIN_SIZE(epb1);
                         unsigned char *ptr = ERL_BIN_PTR(epb1);
                         key = ptr;
-                        //                  for (i = 0; i < sz; i++) {
-                        //                    putc(ptr[i], stdout);
-                        //              }
                     }
-                    if (i != ERL_TUPLE_SIZE(ept) - 1) {
+                    /* if (i != ERL_TUPLE_SIZE(ept) - 1) {
                         putc(',', stdout);
-                    }
+                    }*/
                     ETERM* epb2 = ERL_TUPLE_ELEMENT(ept, 1);
                     if( ERL_IS_BINARY(epb2)) {
-                        //          int sz = (ERL_BIN_SIZE(epb2) > 20) ? 20 : ERL_BIN_SIZE(epb2);
                         unsigned char *ptr = ERL_BIN_PTR(epb2);
                         val = ptr;
-                        //            for (i = 0; i < sz; i++) {
-                        //              putc(ptr[i], stdout);
-                        //        }
                     }
                     if(key && val)
                         result[((char const*)key)] = std::string((char const*)val);
                 }
-                putc('}', stdout);
             }
             epl = epl->uval.lval.tail;
-            if (ERL_IS_CONS(epl)) {
+            /* if (ERL_IS_CONS(epl)) {
                 putc(',', stdout);
-            }
+            }*/
         }
-        if (!ERL_IS_EMPTY_LIST(epl)) {
+        /* if (!ERL_IS_EMPTY_LIST(epl)) {
             putc('|', stdout);
-            // ch_written += erl_print_term(fp, ep);
-        }
-//        putc(']', stdout);
+        }*/
     }
 
     return result;
@@ -187,7 +173,7 @@ void client::loop()
     }
 }
 
-void client::to_prepare_call(std::string const& to, std::string const& from)
+res_map client::to_prepare_call(std::string const& to, std::string const& from)
 {
     etrem_ptr to_bs_term = make_eterm(erl_mk_binary("to", sizeof("to")-1));
     etrem_ptr from_bs_term = make_eterm(erl_mk_binary("from", sizeof("from")-1));
@@ -206,7 +192,7 @@ void client::to_prepare_call(std::string const& to, std::string const& from)
     else
         std::cout << "to_prepare_call failed" << std::endl;
 
-    ff.clear();
+    return ff;
 }
 
 void client::ls()
