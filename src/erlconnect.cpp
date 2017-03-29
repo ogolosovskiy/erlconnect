@@ -3,10 +3,10 @@
 
 
 
-res_map map_from_elist(ETERM* etrem)
+prepare_call_response map_from_elist(ETERM* etrem)
 {
 //    erl_print_term(stdout, etrem);
-    res_map result;
+    prepare_call_response result;
     ETERM* epl = etrem;
     if(ERL_IS_LIST(epl))
     {
@@ -38,24 +38,23 @@ res_map map_from_elist(ETERM* etrem)
     return result;
 }
 
-client::client(const client& copy)
-: _sock_tcp(copy._sock_tcp)
-{
-    std::cout << "copy !!!!" << std::endl;
-}
-
-client::client(std::string const& erlang_node_long, std::string const& cookie)
+erlang_client::erlang_client(
+        std::string const& local_name,
+        std::string const& local_host,
+        std::string const& remote_node,
+        std::string const& cookie)
     : _sock_tcp(0)
-    , test(0)
 {
     erl_init(NULL, 0);
 
     in_addr addr;
     addr.s_addr = inet_addr("192.168.88.103");
 
-    if (!erl_connect_xinit((char*)"MacBook-Pro-Oleg.local",
-                           (char*)"node777",
-                           (char*)"node777@192.168.88.103",
+    std::string local_node = local_name + "@" + local_host;
+
+    if (!erl_connect_xinit((char*)"localhost",
+                           (char*)local_name.c_str(),
+                           (char*)local_node.c_str(),
                            &addr,
                            (char*)(cookie.c_str()),
                            17))
@@ -64,9 +63,9 @@ client::client(std::string const& erlang_node_long, std::string const& cookie)
     const char* this_node_name = erl_thisnodename();
 
     std::cout << "Node:" << this_node_name << " " << cookie << std::endl;
-    std::cout << "Connecting to:" << erlang_node_long << std::endl;
+    std::cout << "Connecting to:" << remote_node << std::endl;
 
-    if ((_sock_tcp = erl_connect(const_cast<char*>(erlang_node_long.c_str()))) < 0) {
+    if ((_sock_tcp = erl_connect(const_cast<char*>(remote_node.c_str()))) < 0) {
         switch(_sock_tcp) {
             case ERL_NO_DAEMON:
                 erl_err_quit("<ERROR> No epmd running!");
@@ -86,25 +85,22 @@ client::client(std::string const& erlang_node_long, std::string const& cookie)
         }
         throw std::runtime_error("erl_connect");
     }
-    std::cout << "Success connected" << std::endl;
+    std::cout << remote_node << " connected" << std::endl;
 }
 
 size_t const BUFSIZE = 1000;
-void client::loop()
+void erlang_client::loop()
 {
 
     unsigned char buf[BUFSIZE];
     ErlMessage emsg;
     int got(0);
 
-    std::cout << "loop run" << std::endl;
+    std::cout << "loop running..." << std::endl;
 
     while (_sock_tcp) {
 
         got = erl_receive_msg(_sock_tcp, buf, BUFSIZE, &emsg);
-
-        std::cout << "got packet" << std::endl;
-
 
         switch (got) {
             case ERL_TICK:
@@ -120,7 +116,6 @@ void client::loop()
                   Incoming request term: {call, from_pid(), {fun_name_atom, arguments_list}}}
                   Reply term: {from_pid(), any}
                 */
-                std::cout << "ERL_MSG" << std::endl;
                 if (emsg.type == ERL_REG_SEND || emsg.type ==  ERL_SEND) {
 
                     etrem_ptr header_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
@@ -134,9 +129,6 @@ void client::loop()
 
                     if(request)
                     {
-
-                        std::cout << "REQV" << std::endl;
-
                         etrem_ptr from_pid_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
                         etrem_ptr function_tuple_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 2));
                         etrem_ptr fun_name_term = make_eterm(ERL_TUPLE_ELEMENT(function_tuple_term, 0));
@@ -157,15 +149,10 @@ void client::loop()
                         }
 
                     } else {
-                        std::cout << "RESP" << std::endl;
-
 //                        etrem_ptr arg1_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
                         etrem_ptr arg2_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
-                        std::cout << "incoming message:" << test << std::endl;
-                        res_map mp = map_from_elist(arg2_term.get());
-                        std::cout << "result:" << mp.size() << std::endl;
+                        prepare_call_response mp = map_from_elist(arg2_term.get());
                         _prepare_call_result.set_value(mp);
-                        std::cout << "done" << std::endl;
                     }
                 }
                 break;
@@ -176,34 +163,22 @@ void client::loop()
     }
 }
 
-res_map client::to_prepare_call(std::string const& to, std::string const& from)
+prepare_call_future erlang_client::to_prepare_call(std::string const& to, std::string const& from)
 {
     etrem_ptr to_bs_term = make_eterm(erl_mk_binary("to", sizeof("to")-1));
     etrem_ptr from_bs_term = make_eterm(erl_mk_binary("from", sizeof("from")-1));
     etrem_ptr toSEQ_bs_term = make_eterm(erl_mk_binary(to.c_str(), to.size()-1));
     etrem_ptr fromSEQ_bs_term = make_eterm(erl_mk_binary(from.c_str(), from.size()-1));
 
-    std::future<res_map> ready = _prepare_call_result.get_future();
-    res_map ff;
+    std::future<prepare_call_response> future = _prepare_call_result.get_future();
 
     etrem_ptr arg = make_eterm(erl_format((char*)"[[{~w, ~w},{~w, ~w}]]", to_bs_term.get(), toSEQ_bs_term.get(), from_bs_term.get(), fromSEQ_bs_term.get()));
     if(0==erl_rpc_to(_sock_tcp, (char*)"bws_call_logic_test", (char*)"to_prepare_call", arg.get())) {
-        std::cout << "to_prepare_call success, wait" << std::endl;
-        ready.wait();
-        std::cout << "wait done" << std::endl;
-        ff = ready.get();
+        return future;
     }
-    else
+    else {
         std::cout << "to_prepare_call failed" << std::endl;
-
-    return ff;
+        throw std::runtime_error("to_prepare_call failed");
+    }
 }
 
-void client::ls()
-{
-    etrem_ptr arg = make_eterm(erl_format((char*)"[~a]", "."));
-    if(0==erl_rpc_to(_sock_tcp, (char*)"c", (char*)"ls", arg.get()))
-        std::cout << "ls success" << std::endl;
-    else
-        std::cout << "ls failed" << std::endl;
-}

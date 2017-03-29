@@ -31,22 +31,22 @@ etrem_ptr make_eterm(ETERM* new_one)
     return std::unique_ptr<ETERM, eterm_deleter>(new_one, deleter);
 }
 
-typedef std::map<std::string, std::string> res_map;
+typedef std::map<std::string, std::string> prepare_call_response;
+typedef std::future<prepare_call_response> prepare_call_future;
 
-class client
+class erlang_client
 {
 public:
-    client(std::string const& erlang_node_long, std::string const& cookie);
-    client(const client&);
+    erlang_client(std::string const& local_name,
+                  std::string const& local_host,
+                  std::string const& remote_node,
+                  std::string const& cookie);
     void loop();
-    res_map to_prepare_call(std::string const& to, std::string const& from);
-    void ls();
+    prepare_call_future to_prepare_call(std::string const& to, std::string const& from);
 
 protected:
-    std::promise<res_map> _prepare_call_result;
+    std::promise<prepare_call_response> _prepare_call_result;
 protected:
     int _sock_tcp;
-public:
-    int test;
 };
 
