@@ -184,12 +184,17 @@ void erlang_client::loop()
                             etrem_ptr arg2_term = make_eterm(ERL_TUPLE_ELEMENT(header_term2, 2));
                             prepare_call_response mp = map_from_elist(arg2_term.get());
 
-                            auto prm = _prepare_call_results.find(ref);
-                            if(prm != _prepare_call_results.end()) {
-                                prepare_call_promise promise = prm->second;
-                                promise->set_value(mp);
-                                _prepare_call_results.erase(prm);
+                            prepare_call_promise promise;
+                            {
+                                std::lock_guard<std::mutex> guard(_prepare_call_guard);
+                                auto prm = _prepare_call_results.find(ref);
+                                if (prm != _prepare_call_results.end()) {
+                                    promise = prm->second;
+                                    _prepare_call_results.erase(prm);
+                                }
                             }
+                            if(promise)
+                                promise->set_value(mp);
                         }
                         break;
                         case RPC_Request:
@@ -234,7 +239,10 @@ prepare_call_future erlang_client::to_prepare_call(std::string const& to, std::s
     prepare_call_future future = promise->get_future();
     // TO DO not thread safe
     int n = get_ref(ref);
-    _prepare_call_results[n] = promise;
+    {
+        std::lock_guard<std::mutex> guard(_prepare_call_guard);
+        _prepare_call_results[n] = promise;
+    }
 
     // {'RPC_Request', RPC_Id}
     etrem_ptr arg = make_eterm(erl_format((char*)"[{~a, ~w, [{~w, ~w},{~w, ~w}]}]"

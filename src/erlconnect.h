@@ -58,6 +58,7 @@ public:
     };
 
 protected:
+    std::mutex       _prepare_call_guard;
     prepare_call_map _prepare_call_results;
 protected:
     int _sock_tcp;
