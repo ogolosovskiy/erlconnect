@@ -33,6 +33,8 @@ etrem_ptr make_eterm(ETERM* new_one)
 
 typedef std::map<std::string, std::string> prepare_call_response;
 typedef std::future<prepare_call_response> prepare_call_future;
+typedef std::shared_ptr<std::promise<prepare_call_response> > prepare_call_promise;
+typedef std::map<int, prepare_call_promise> prepare_call_map;
 
 class erlang_client
 {
@@ -44,9 +46,23 @@ public:
     void loop();
     prepare_call_future to_prepare_call(std::string const& to, std::string const& from);
 
+    etrem_ptr make_ref();
+    int get_ref(etrem_ptr const& term) const;
+
+    enum message_type
+    {
+        Unknown = 0,
+        RPC_Request = 1,
+        RPC_Response = 2,
+        Message = 3
+    };
+
 protected:
-    std::promise<prepare_call_response> _prepare_call_result;
+    prepare_call_map _prepare_call_results;
 protected:
     int _sock_tcp;
+    static int const _creation = 17;
+    int _ref;
+    std::string _node_name;
 };
 

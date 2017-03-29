@@ -5,9 +5,9 @@
 start() ->
   io:format("Escucha me!!!~n").
 
-to_prepare_call(RequestList) ->
+to_prepare_call({'RPC_Request', RefId, RequestList}=Request) ->
   try
-    io:format("to_prepare_call ~p ~n", [RequestList]),
+    io:format("to_prepare_call ~p ~n", [Request]),
     RespMap = #{<<"SSRC_A">> => <<"29552370">>,
                                          <<"SSRC_B">> => <<"29552371">>,
                                          <<"SSTP_A">> => <<"OTQ4NTVmZDE4Y2E1NGVlNjYwMjgzZDYxMzhhMWM3">>,
@@ -17,8 +17,10 @@ to_prepare_call(RequestList) ->
                                          <<"server_token_to">> => <<"+0Pc3Qup62X/x6BNU1WnjT8PPjhuH7DndWNh2vS2Ld4=">>,
                                          <<"to_devices">> => [<<"fake_device_todo">>],
                                          <<"turn_IP">> => <<"turn:52.91.165.63:3478">>},
-    io:format("to_prepare_call result: ~p ~n", [RespMap]),
-    maps:to_list(RespMap)
+    RespList = maps:to_list(RespMap),
+    Resp = {'RPC_Response', RefId , RespList},
+    io:format("to_prepare_call result: ~p ~n", [Resp]),
+    Resp
   catch
     ClassType:Reason ->
       [{_Module, _Fun, _Arity, [{file, File}, {line, Line}]} | _ ] = Stack = erlang:get_stacktrace(),

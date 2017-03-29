@@ -1,14 +1,12 @@
 
+#include <erl_interface.h>
 #include "erlconnect.h"
-
-
 
 prepare_call_response map_from_elist(ETERM* etrem)
 {
-//    erl_print_term(stdout, etrem);
     prepare_call_response result;
     ETERM* epl = etrem;
-    if(ERL_IS_LIST(epl))
+    if(epl && ERL_IS_LIST(epl))
     {
         while (ERL_IS_CONS(epl)) {
             ETERM* ept = epl->uval.lval.head;
@@ -44,20 +42,19 @@ erlang_client::erlang_client(
         std::string const& remote_node,
         std::string const& cookie)
     : _sock_tcp(0)
+    , _ref(0)
 {
     erl_init(NULL, 0);
 
     in_addr addr;
     addr.s_addr = inet_addr("192.168.88.103");
-
-    std::string local_node = local_name + "@" + local_host;
-
+    _node_name = local_name + "@" + local_host;
     if (!erl_connect_xinit((char*)"localhost",
                            (char*)local_name.c_str(),
-                           (char*)local_node.c_str(),
+                           (char*)_node_name.c_str(),
                            &addr,
                            (char*)(cookie.c_str()),
-                           17))
+                           _creation))
         throw std::runtime_error("erl_connect_init failed" );
 
     const char* this_node_name = erl_thisnodename();
@@ -113,46 +110,93 @@ void erlang_client::loop()
                 break;
             case ERL_MSG:
                 /*
-                  Incoming request term: {call, from_pid(), {fun_name_atom, arguments_list}}}
-                  Reply term: {from_pid(), any}
+                  эти мудаки захардкодили таг, придется писать "закат солнца вручную"
+                  /usr/lib/erlang18/lib/erl_interface-3.8.2/src/connect/ei_connect.c
+                  ei_send_reg_encoded(fd, self, "rex", x.buff, x.index);
+                  или позже переписать С++ RPC самому
                 */
                 if (emsg.type == ERL_REG_SEND || emsg.type ==  ERL_SEND) {
 
-                    etrem_ptr header_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
+                    erl_print_term(stdout, emsg.msg);
+                    std::cout << std::endl;
 
-                    bool request = false;
+                    etrem_ptr header_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
+                    etrem_ptr header_term2 = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
+
+                    /* protocol expected
+                    RPC Request
+                     {'RPC_Request', RPC_Id_Ref, [Args]}
+                    RPC Response
+                     {'RPC_Response', RPC_Id_Ref, [Args]}
+                    Simple message
+                     {'Message', from_pid(), [Args]}
+                    */
+
+                    message_type type = Unknown;
+                    int ref = 0;
 
                     if(header_term && ERL_IS_ATOM(header_term.get())) {
-                            char* elem1_atom = ERL_ATOM_PTR(header_term);
-                            request = std::string(elem1_atom) == "call";
+                        std::string header_fake_ref(ERL_ATOM_PTR(header_term.get()));
+                        if(header_fake_ref=="rex")
+                        {
+                            if(header_term2 && ERL_IS_TUPLE(header_term2.get())) {
+                                etrem_ptr header_elem1 = make_eterm ERL_TUPLE_ELEMENT(header_term2.get(), 0);
+                                if(header_elem1 && ERL_IS_ATOM(header_elem1.get())) {
+                                    std::string header_name(ERL_ATOM_PTR(header_elem1.get()));
+                                    if(header_name=="RPC_Request")
+                                        type = RPC_Request;
+                                    if(header_name=="RPC_Response")
+                                        type = RPC_Response;
+                                }
+                                etrem_ptr header_elem2 = make_eterm ERL_TUPLE_ELEMENT(header_term2.get(), 1);
+                                if(header_elem2 && ERL_IS_REF(header_elem2.get())) {
+                                    ref = ERL_REF_NUMBER(header_elem2.get());
+                                }
+                            }
+
+
+                        }
                     }
 
-                    if(request)
+                     switch(type)
                     {
-                        etrem_ptr from_pid_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
-                        etrem_ptr function_tuple_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 2));
-                        etrem_ptr fun_name_term = make_eterm(ERL_TUPLE_ELEMENT(function_tuple_term, 0));
-                        char *fun_name_atom = ERL_ATOM_PTR(fun_name_term);
-                        etrem_ptr fun_args_term = make_eterm(ERL_TUPLE_ELEMENT(function_tuple_term, 1));
+                        case Message: {
+                            etrem_ptr from_pid_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
+                            etrem_ptr function_tuple_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 2));
+                            etrem_ptr fun_name_term = make_eterm(ERL_TUPLE_ELEMENT(function_tuple_term, 0));
+                            char *fun_name_atom = ERL_ATOM_PTR(fun_name_term);
+                            etrem_ptr fun_args_term = make_eterm(ERL_TUPLE_ELEMENT(function_tuple_term, 1));
 
-                        ETERM *resp;
+                            ETERM *resp;
 
-                        std::cout << "fun:" << fun_name_atom << std::endl;
-                        erl_print_term(stdout, fun_args_term.get());
-                        std::cout << std::endl;
+                            std::cout << "fun:" << fun_name_atom << std::endl;
+                            erl_print_term(stdout, fun_args_term.get());
+                            std::cout << std::endl;
 
-                        if ((resp = erl_format((char*)"{cnode, ~w}", erl_mk_atom("ok"))) != NULL) {
-                            if(!erl_send(_sock_tcp, from_pid_term.get(), resp))
-                                std::cout << "node " << erl_thisnodename() << ": send reply error" << std::endl;
-                        } else {
-                            std::cout << "node " << erl_thisnodename() << ": term format error" << std::endl;
+                            if ((resp = erl_format((char*)"{cnode, ~w}", erl_mk_atom("ok"))) != NULL) {
+                                if (!erl_send(_sock_tcp, from_pid_term.get(), resp))
+                                    std::cout << "node " << erl_thisnodename() << ": send reply error" << std::endl;
+                            }
                         }
+                        break;
+                        case RPC_Response: {
+                            std::cout << "RPC_Response ref: " << ref << std::endl;
+                            etrem_ptr arg2_term = make_eterm(ERL_TUPLE_ELEMENT(header_term2, 2));
+                            prepare_call_response mp = map_from_elist(arg2_term.get());
 
-                    } else {
-//                        etrem_ptr arg1_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 0));
-                        etrem_ptr arg2_term = make_eterm(ERL_TUPLE_ELEMENT(emsg.msg, 1));
-                        prepare_call_response mp = map_from_elist(arg2_term.get());
-                        _prepare_call_result.set_value(mp);
+                            auto prm = _prepare_call_results.find(ref);
+                            if(prm != _prepare_call_results.end()) {
+                                prepare_call_promise promise = prm->second;
+                                promise->set_value(mp);
+                                _prepare_call_results.erase(prm);
+                            }
+                        }
+                        break;
+                        case RPC_Request:
+                            std::cout << "RPC_Request:" << ref << std::endl;
+                            break;
+                        default:
+                            std::cout << "node " << erl_thisnodename() << ": term format error" << std::endl;
                     }
                 }
                 break;
@@ -163,16 +207,40 @@ void erlang_client::loop()
     }
 }
 
+
+etrem_ptr erlang_client::make_ref()
+{
+    _ref++;
+    if(_ref>=262143)
+        _ref = 0;
+    // old Erlang reference, with only 18 bits
+    return make_eterm(erl_mk_ref(_node_name.c_str(), _ref, _creation));
+}
+
+int erlang_client::get_ref(etrem_ptr const& term) const
+{
+    return ERL_REF_NUMBER(term.get()); //term->uval.refval.n[0];
+}
+
 prepare_call_future erlang_client::to_prepare_call(std::string const& to, std::string const& from)
 {
     etrem_ptr to_bs_term = make_eterm(erl_mk_binary("to", sizeof("to")-1));
     etrem_ptr from_bs_term = make_eterm(erl_mk_binary("from", sizeof("from")-1));
     etrem_ptr toSEQ_bs_term = make_eterm(erl_mk_binary(to.c_str(), to.size()-1));
     etrem_ptr fromSEQ_bs_term = make_eterm(erl_mk_binary(from.c_str(), from.size()-1));
+    etrem_ptr ref = make_ref();
 
-    std::future<prepare_call_response> future = _prepare_call_result.get_future();
+    prepare_call_promise promise(new std::promise<prepare_call_response>());
+    prepare_call_future future = promise->get_future();
+    // TO DO not thread safe
+    int n = get_ref(ref);
+    _prepare_call_results[n] = promise;
 
-    etrem_ptr arg = make_eterm(erl_format((char*)"[[{~w, ~w},{~w, ~w}]]", to_bs_term.get(), toSEQ_bs_term.get(), from_bs_term.get(), fromSEQ_bs_term.get()));
+    // {'RPC_Request', RPC_Id}
+    etrem_ptr arg = make_eterm(erl_format((char*)"[{~a, ~w, [{~w, ~w},{~w, ~w}]}]"
+            , "RPC_Request", ref.get()
+            , to_bs_term.get(), toSEQ_bs_term.get()
+            , from_bs_term.get(), fromSEQ_bs_term.get()));
     if(0==erl_rpc_to(_sock_tcp, (char*)"bws_call_logic_test", (char*)"to_prepare_call", arg.get())) {
         return future;
     }
